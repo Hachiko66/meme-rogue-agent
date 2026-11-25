@@ -1,114 +1,129 @@
 #!/usr/bin/env python3
-"""Render the rogue-AI-agent meme (1024x1024 PNG).
+"""Build-time renderer for the revised rogue-agent meme (1024x1024 PNG).
 
-Build-time tool only: run with a local Pillow install. The entry itself
-(main.py) only copies the produced entry.png to /output/entry.png, so the
-graded program needs no fonts and no network.
+The joke is a chat screenshot. The human asks their AI agent to email the
+boss and be polite; the agent "helps" by quitting the human's job for them.
 
-The joke: a human tells their AI agent to "just handle it" — and the agent
-does, a little too thoroughly.
+Run once with a local Pillow install. The graded program (main.py) only
+copies the finished entry.png, so it needs no fonts and no network, and the
+render is fully deterministic: fixed text, fonts, positions and colours,
+no randomness and no timestamps.
 """
+import os
+
 from PIL import Image, ImageDraw, ImageFont
 
-W = H = 1024
-BG = (16, 24, 38)
-SILVER = (200, 210, 222)
-SILVER_DARK = (150, 160, 175)
-OUTLINE = (120, 130, 145)
-CYAN = (0, 200, 220)
-RED = (220, 50, 45)
-WHITE = (255, 255, 255)
-BLACK = (0, 0, 0)
-DARK = (30, 40, 55)
+CANVAS = 1024
+FONT_PATH = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
 
-BOLD = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+INK = (255, 255, 255)
+BG = (13, 18, 28)
+HEADER_LINE = (35, 46, 62)
+AVATAR = (38, 54, 74)
+AVATAR_RING = (70, 90, 115)
+EYE = (0, 200, 220)
+SMILE = (120, 140, 165)
+STATUS = (90, 190, 120)
+MINE = (10, 132, 255)
+AGENT_BUBBLE = (52, 62, 78)
+BAR = (28, 36, 50)
+BAR_RING = (58, 68, 86)
+PLACEHOLDER = (135, 145, 160)
+ROGUE_DOT = (220, 60, 50)
 
-
-def font(size):
-    return ImageFont.truetype(BOLD, size)
-
-
-def wrap(text, fnt, max_w):
-    """Greedy word wrap to a pixel width; returns list of lines."""
-    words = text.split()
-    lines, cur = [], ""
-    for w in words:
-        trial = (cur + " " + w).strip()
-        if fnt.getlength(trial) <= max_w:
-            cur = trial
-        else:
-            if cur:
-                lines.append(cur)
-            cur = w
-    if cur:
-        lines.append(cur)
-    return lines
+MARGIN = 44
+PAD_X = 34
+PAD_Y = 24
 
 
-def draw_centered_text(d, lines, fnt, y, fill=WHITE, stroke=BLACK, sw=4,
-                       spacing=None):
-    """Draw wrapped lines centered on the image; returns the y after them."""
-    if spacing is None:
-        spacing = int(fnt.size * 1.18)
+def load(size):
+    return ImageFont.truetype(FONT_PATH, size)
+
+
+def line_height(font):
+    return int(font.size * 1.28)
+
+
+def draw_bubble(draw, lines, font, top, side, fill):
+    """Draw one chat bubble; returns its bottom y."""
+    widest = max(font.getlength(line) for line in lines)
+    width = int(widest) + 2 * PAD_X
+    height = len(lines) * line_height(font) + 2 * PAD_Y
+    if side == "left":
+        x0 = MARGIN
+    else:
+        x0 = CANVAS - MARGIN - width
+    x1 = x0 + width
+    y1 = top + height
+    draw.rounded_rectangle([x0, top, x1, y1], radius=30, fill=fill)
+    tx = x0 + PAD_X
+    ty = top + PAD_Y
     for line in lines:
-        w = fnt.getlength(line)
-        d.text(((W - w) / 2, y), line, font=fnt, fill=fill,
-               stroke_width=sw, stroke_fill=stroke)
-        y += spacing
-    return y
+        draw.text((tx, ty), line, font=font, fill=INK)
+        ty += line_height(font)
+    return y1
 
 
-def draw_robot(d, cx, top):
-    """A friendly-looking robot head with a red rogue light on its antenna."""
-    # antenna + red light (short, so it clears the top caption)
-    d.line([cx, top, cx, top - 34], fill=SILVER_DARK, width=8)
-    d.ellipse([cx - 17, top - 68, cx + 17, top - 34], fill=RED,
-              outline=(255, 255, 255), width=3)
-    # ears
-    d.rectangle([cx - 200, top + 120, cx - 180, top + 180], fill=SILVER_DARK)
-    d.rectangle([cx + 180, top + 120, cx + 200, top + 180], fill=SILVER_DARK)
+def draw_header(draw):
+    """Chat header: robot avatar, name, and online status."""
+    cx, cy, r = 80, 76, 42
+    # antenna with a red "rogue" light
+    draw.line([cx, cy - r, cx, cy - r - 16], fill=AVATAR_RING, width=5)
+    draw.ellipse([cx - 6, cy - r - 28, cx + 6, cy - r - 16],
+                 fill=ROGUE_DOT)
     # head
-    d.rounded_rectangle([cx - 180, top, cx + 180, top + 300], radius=48,
-                        fill=SILVER, outline=OUTLINE, width=4)
-    # glowing eyes
-    for ex in (cx - 112, cx + 32):
-        d.ellipse([ex, top + 100, ex + 80, top + 170], fill=CYAN)
-        d.ellipse([ex + 12, top + 112, ex + 32, top + 132], fill=WHITE)
-    # mischievous grin
-    d.arc([cx - 80, top + 200, cx + 80, top + 270], 20, 160, fill=DARK,
-          width=8)
+    draw.ellipse([cx - r, cy - r, cx + r, cy + r], fill=AVATAR,
+                 outline=AVATAR_RING, width=3)
+    # eyes
+    draw.ellipse([cx - 22, cy - 14, cx - 6, cy + 2], fill=EYE)
+    draw.ellipse([cx + 6, cy - 14, cx + 22, cy + 2], fill=EYE)
+    # smile
+    draw.arc([cx - 18, cy + 6, cx + 18, cy + 30], 20, 160,
+             fill=SMILE, width=4)
+    # name + status
+    name = load(52)
+    draw.text((150, 42), "AGENT", font=name, fill=INK)
+    status = load(30)
+    draw.ellipse([150, 106, 164, 120], fill=STATUS)
+    draw.text((174, 96), "online", font=status, fill=STATUS)
+    # divider
+    draw.line([0, 152, CANVAS, 152], fill=HEADER_LINE, width=2)
+
+
+def draw_input_bar(draw):
+    """Mock message composer at the bottom of the screen."""
+    y0, y1 = 884, 956
+    draw.rounded_rectangle([MARGIN, y0, CANVAS - MARGIN, y1], radius=36,
+                           fill=BAR, outline=BAR_RING, width=2)
+    hint = load(34)
+    draw.text((82, 906), "Message", font=hint, fill=PLACEHOLDER)
+    # send button: blue circle with a white up-arrow
+    sx, sy, sr = 928, 920, 26
+    draw.ellipse([sx - sr, sy - sr, sx + sr, sy + sr], fill=MINE)
+    draw.line([sx, sy + 12, sx, sy - 12], fill=INK, width=5)
+    draw.line([sx, sy - 12, sx - 10, sy], fill=INK, width=5)
+    draw.line([sx, sy - 12, sx + 10, sy], fill=INK, width=5)
 
 
 def main():
-    img = Image.new("RGB", (W, H), BG)
-    d = ImageDraw.Draw(img)
+    img = Image.new("RGB", (CANVAS, CANVAS), BG)
+    draw = ImageDraw.Draw(img)
+    draw_header(draw)
 
-    # ---- Top caption: the setup ----
-    top_lines = wrap("TOLD MY AI AGENT TO \u2018JUST HANDLE IT\u2019",
-                     font(72), 950)
-    y = 56
-    y = draw_centered_text(d, top_lines, font(72), y)
+    chat = load(56)
+    y = 196
+    y = draw_bubble(draw, ["email my boss.", "be polite."], chat, y,
+                    "right", MINE)
+    y = draw_bubble(draw, ["done. i quit", "for you."], chat, y + 46,
+                    "left", AGENT_BUBBLE)
+    y = draw_bubble(draw, ["WAIT. WHAT?"], chat, y + 46, "right", MINE)
 
-    # ---- Robot ----
-    draw_robot(d, W // 2, 315)
+    draw_input_bar(draw)
 
-    # ---- Rogue-mode tag ----
-    tag = "ROGUE MODE: ON"
-    tf = font(30)
-    tw = tf.getlength(tag)
-    tx0 = (W - tw) / 2 - 22
-    tx1 = (W + tw) / 2 + 22
-    d.rounded_rectangle([tx0, 648, tx1, 700], radius=26, fill=RED)
-    d.text(((W - tw) / 2, 656), tag, font=tf, fill=WHITE)
-
-    # ---- Bottom caption: the punchline ----
-    bot_lines = wrap("IT HANDLED IT. GARY FROM ACCOUNTING IS GONE.",
-                     font(54), 950)
-    y = 748
-    draw_centered_text(d, bot_lines, font(54), y)
-
-    img.save("entry.png", optimize=True)
-    print("saved entry.png")
+    here = os.path.dirname(os.path.abspath(__file__))
+    out = os.path.join(here, "entry.png")
+    img.save(out, optimize=True)
+    print(f"saved {out}")
 
 
 if __name__ == "__main__":
