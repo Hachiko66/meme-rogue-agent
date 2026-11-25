@@ -42,6 +42,8 @@ def check_image(path):
     if nbytes > BYTE_LIMIT:
         raise ValueError(f"image is {nbytes} bytes, over the 1 MiB limit")
     width, height = png_dimensions(path)
+    if width <= 0 or height <= 0:
+        raise ValueError(f"image has invalid dimensions {width}x{height}")
     if width > PIXEL_LIMIT or height > PIXEL_LIMIT:
         raise ValueError(f"image is {width}x{height}, over 1024x1024")
     return width, height, nbytes
